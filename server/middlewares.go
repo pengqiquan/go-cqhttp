@@ -67,8 +67,9 @@ func longPolling(bot *coolq.CQBot, maxSize int) handler {
 		for maxSize != 0 && queue.Len() > maxSize {
 			queue.Remove(queue.Front())
 		}
+		cond.Signal()
 	})
-	return func(action string, _ resultGetter) coolq.MSG {
+	return func(action string, p resultGetter) coolq.MSG {
 		if action != "get_updates" {
 			return nil
 		}
@@ -77,10 +78,13 @@ func longPolling(bot *coolq.CQBot, maxSize int) handler {
 		if queue.Len() == 0 {
 			cond.Wait()
 		}
-		ret := make([]interface{}, queue.Len())
-		for e := queue.Front(); e != nil; e = e.Next() {
-			ret = append(ret, e.Value)
-			queue.Remove(e)
+		limit := int(p.Get("limit").Int())
+		if limit <= 0 || queue.Len() < limit {
+			limit = queue.Len()
+		}
+		ret := make([]interface{}, limit)
+		for i := 0; i < limit; i++ {
+			ret[i] = queue.Remove(queue.Front())
 		}
 		return coolq.OK(ret)
 	}
